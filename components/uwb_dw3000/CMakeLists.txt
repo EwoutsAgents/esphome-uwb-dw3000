@@ -1,0 +1,15 @@
+idf_component_register(
+  SRCS
+    "uwb_dw3000.cpp"
+    "tag_driver.cpp"
+    "dw3000/dw3000_config_options.cpp"
+    "dw3000/dw3000_device_api.cpp"
+    "dw3000/dw3000_mac_802_15_4.cpp"
+    "dw3000/dw3000_mutex.cpp"
+    "dw3000/dw3000_port.cpp"
+    "dw3000/dw3000_shared_functions.cpp"
+    "dw3000/dw3000_uart.cpp"
+  INCLUDE_DIRS
+    "."
+    "dw3000"
+)
