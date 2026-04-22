@@ -17,13 +17,13 @@ void UART_putc(char data)
   (void) data;
 }
 
-void UART_puts(char* s)
+void UART_puts(const char *s)
 {
   (void) s;
 }
 
-void test_run_info(unsigned char * s)
+void test_run_info(const unsigned char *s)
 {
-    UART_puts((char *)s);
+    UART_puts(reinterpret_cast<const char *>(s));
     UART_puts("\r\n");
 }
