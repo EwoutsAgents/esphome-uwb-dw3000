@@ -87,3 +87,7 @@ sensor:
     uwb_dw3000_id: my_uwb
     rx_power:
       name: "UWB RX Power"
+
+button:
+  - platform: restart
+    name: "UWB Tag Restart"
