@@ -111,7 +111,11 @@ void UwbDw3000Component::setup() {
       static_cast<uint8_t>(rst_pin_no),
   });
   uwb_tag_driver_set_tag_id(this->tag_id_);
-  uwb_tag_driver_init();
+  if (!uwb_tag_driver_init()) {
+    ESP_LOGE(TAG, "DW3000 init failed (check SPI pins, power, and wiring)");
+    this->mark_failed();
+    return;
+  }
 }
 
 void UwbDw3000Component::update() {

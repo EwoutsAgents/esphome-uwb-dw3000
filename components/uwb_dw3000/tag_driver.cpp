@@ -21,6 +21,8 @@ constexpr uint8_t RX_BUF_LEN = 24;
 constexpr uint16_t POLL_TX_TO_RESP_RX_DLY_UUS = (300 + CPU_COMP);
 constexpr uint16_t RESP_RX_TIMEOUT_UUS = 700;
 constexpr float A_IPATOV_64 = 121.7f;
+constexpr uint32_t INIT_IDLE_TIMEOUT_MS = 1500;
+constexpr uint32_t TX_COMPLETE_TIMEOUT_MS = 200;
 
 #ifndef DGC_DBG_ID
 #define DGC_DBG_ID 0x30060UL
@@ -104,17 +106,23 @@ void fill_cir_metrics_(const dwt_rxdiag_t &diag, TagDriverCirMetrics *metrics) {
   metrics->nlos_power_db = 10.0f * safe_log10f(nlos_lin);
 }
 
-void send_tx_poll_msg_() {
+bool send_tx_poll_msg_() {
   tx_poll_msg[ALL_MSG_SN_IDX] = g_frame_seq_nb;
   dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
   dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
   dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
   dwt_starttx(DWT_START_TX_IMMEDIATE);
 
+  const uint32_t start = millis();
   while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK)) {
+    if (millis() - start > TX_COMPLETE_TIMEOUT_MS) {
+      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+      return false;
+    }
     delay(1);
   }
   dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+  return true;
 }
 
 }  // namespace
@@ -123,24 +131,27 @@ void uwb_tag_driver_set_pins(const TagDriverPins &pins) { g_pins = pins; }
 
 void uwb_tag_driver_set_tag_id(uint8_t tag_id) { g_tag_id = tag_id; }
 
-void uwb_tag_driver_init() {
+bool uwb_tag_driver_init() {
   UART_init();
   spiBegin(g_pins.irq_pin, g_pins.rst_pin);
   spiSelect(g_pins.ss_pin);
   delay(2);
 
+  const uint32_t init_start = millis();
   while (!dwt_checkidlerc()) {
+    if (millis() - init_start > INIT_IDLE_TIMEOUT_MS)
+      return false;
     delay(1);
   }
 
   if (dwt_initialise(DWT_DW_INIT) == DWT_ERROR) {
-    return;
+    return false;
   }
 
   dwt_setleds(DWT_LEDS_ENABLE | DWT_LEDS_INIT_BLINK);
 
   if (dwt_configure(&config_options)) {
-    return;
+    return false;
   }
 
   dwt_or8bitoffsetreg(DGC_CFG_ID, 0x0, static_cast<uint8_t>(DGC_CFG_RX_TUNE_EN_BIT_MASK));
@@ -155,6 +166,7 @@ void uwb_tag_driver_init() {
   set_resp_rx_timeout(RESP_RX_TIMEOUT_UUS, &config_options);
   dwt_setlnapamode(DWT_LNA_ENABLE | DWT_PA_ENABLE);
   dwt_configciadiag(DW_CIA_DIAG_LOG_ALL);
+  return true;
 }
 
 float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
@@ -173,7 +185,8 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     dwt_configurestsloadiv();
   }
 
-  send_tx_poll_msg_();
+  if (!send_tx_poll_msg_())
+    return NAN;
   set_delayed_rx_time(POLL_TX_TO_RESP_RX_DLY_UUS, &config_options);
   dwt_rxenable(DWT_START_RX_DLY_TS);
 

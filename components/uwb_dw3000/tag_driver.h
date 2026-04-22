@@ -22,7 +22,7 @@ struct TagDriverCirMetrics {
 
 void uwb_tag_driver_set_pins(const TagDriverPins &pins);
 void uwb_tag_driver_set_tag_id(uint8_t tag_id);
-void uwb_tag_driver_init();
+bool uwb_tag_driver_init();
 float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics);
 
 }  // namespace uwb_dw3000
