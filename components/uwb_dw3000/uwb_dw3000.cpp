@@ -83,6 +83,12 @@ void UwbDw3000Component::setup() {
   this->irq_pin_->setup();
   this->rst_pin_->setup();
 
+  // Hardware reset pulse for boards with a wired DW3000 reset pin (e.g. Makerfabs v1.1).
+  this->rst_pin_->digital_write(false);
+  delay(2);
+  this->rst_pin_->digital_write(true);
+  delay(5);
+
   this->trilat_.set_tag_height(this->tag_height_);
 
   std::vector<AnchorPosition> anchors;
