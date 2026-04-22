@@ -10,8 +10,8 @@
  *
  */
 
-#include <dw3000_device_api.h>
-#include <dw3000_port.h>
+#include "dw3000_device_api.h"
+#include "dw3000_port.h"
 // ---------------------------------------------------------------------------
 //
 // NB: The purpose of this file is to provide for microprocessor interrupt enable/disable, this is used for
@@ -52,14 +52,7 @@ portMUX_TYPE my_mutex = portMUX_INITIALIZER_UNLOCKED;
 decaIrqStatus_t decamutexon(void)
 {
     portENTER_CRITICAL(&my_mutex);
-    /*portDISABLE_INTERRUPTS();
-    decaIrqStatus_t s = port_GetEXT_IRQStatus();
-
-    if(s) {
-        port_DisableEXT_IRQ(); //disable the external interrupt line
-    }
-    return s ;   // return state before disable, value is used to re-enable in decamutexoff call
-    */
+    return 0;
 }
 
 /*! ------------------------------------------------------------------------------------------------------------------

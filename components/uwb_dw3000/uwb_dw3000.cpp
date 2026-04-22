@@ -15,6 +15,12 @@ static const char *const TAG = "uwb_dw3000";
 namespace {
 UwbDw3000Component *g_active_component = nullptr;
 
+int gpio_pin_number_(GPIOPin *pin) {
+  if (pin == nullptr || !pin->is_internal())
+    return -1;
+  return static_cast<InternalGPIOPin *>(pin)->get_pin();
+}
+
 void dw3000_spi_begin_() {
   if (g_active_component != nullptr)
     g_active_component->enable();
@@ -89,15 +95,20 @@ void UwbDw3000Component::setup() {
   g_active_component = this;
   dw3000_set_spi_backend(dw3000_spi_begin_, dw3000_spi_transfer_, dw3000_spi_end_);
 
-  uint8_t cs_pin = 4;
-  if (this->cs_ != nullptr) {
-    cs_pin = static_cast<uint8_t>(this->cs_->get_pin());
+  const int cs_pin_no = gpio_pin_number_(this->cs_);
+  const int irq_pin_no = gpio_pin_number_(this->irq_pin_);
+  const int rst_pin_no = gpio_pin_number_(this->rst_pin_);
+
+  if (cs_pin_no < 0 || irq_pin_no < 0 || rst_pin_no < 0) {
+    ESP_LOGE(TAG, "Invalid internal pin selection for cs/irq/rst");
+    this->mark_failed();
+    return;
   }
 
   uwb_tag_driver_set_pins(TagDriverPins{
-      cs_pin,
-      static_cast<uint8_t>(this->irq_pin_->get_pin()),
-      static_cast<uint8_t>(this->rst_pin_->get_pin()),
+      static_cast<uint8_t>(cs_pin_no),
+      static_cast<uint8_t>(irq_pin_no),
+      static_cast<uint8_t>(rst_pin_no),
   });
   uwb_tag_driver_set_tag_id(this->tag_id_);
   uwb_tag_driver_init();

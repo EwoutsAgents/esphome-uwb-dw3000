@@ -6,23 +6,19 @@
 //#include <avr/io.h> // all the standard AVR functions
 #define __DELAY_BACKWARD_COMPATIBLE__ // this enables uint32 to be used in sleep functions
 
+#include <cstdint>
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <cstdint>
-#include "esphome/core/hal.h"
-#include <stdio.h>
-#include <inttypes.h>
-#include "dw3000_uart.h"
-#include "dw3000_port.h"
-#include "dw3000_device_api.h"
-#include "dw3000_shared_functions.h"
 
-#define _BV(n) (1 << n) // sets 1 at position of BIT "n"
-#define __INLINE inline
+#include "esphome/core/hal.h"
 
 using byte = uint8_t;
 using boolean = bool;
+
+#define _BV(n) (1 << n) // sets 1 at position of BIT "n"
+#define __INLINE inline
 
 #ifndef bitSet
 #define bitSet(value, bit) ((value) |= (1UL << (bit)))
@@ -47,5 +43,10 @@ using boolean = bool;
 #ifndef millis
 #define millis() esphome::millis()
 #endif
+
+#include "dw3000_uart.h"
+#include "dw3000_port.h"
+#include "dw3000_device_api.h"
+#include "dw3000_shared_functions.h"
 
 #endif /* MAIN_H_ */

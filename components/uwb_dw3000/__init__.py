@@ -1,8 +1,8 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
-from esphome.components import sensor, spi
-from esphome.const import CONF_ID, CONF_IRQ_PIN, CONF_RST_PIN, CONF_UPDATE_INTERVAL
+from esphome.components import sensor as sensor_comp, spi
+from esphome.const import CONF_ID, CONF_IRQ_PIN, CONF_UPDATE_INTERVAL
 
 AUTO_LOAD = ["sensor"]
 DEPENDENCIES = ["spi"]
@@ -12,6 +12,7 @@ CONF_TAG_ID = "tag_id"
 CONF_ROLE = "role"
 CONF_ANCHORS = "anchors"
 CONF_TAG_HEIGHT = "tag_height"
+CONF_RST_PIN = "rst_pin"
 CONF_ANCHOR_ID = "anchor_id"
 CONF_UWB_DW3000_ID = "uwb_dw3000_id"
 CONF_X = "x"
@@ -86,37 +87,37 @@ async def to_code(config):
 sensor_schema = cv.Schema(
     {
         cv.GenerateID(CONF_UWB_DW3000_ID): cv.use_id(UwbDw3000Component),
-        cv.Optional(CONF_DISTANCE): sensor.sensor_schema(
+        cv.Optional(CONF_DISTANCE): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ).extend({cv.Required(CONF_ANCHOR_ID): cv.hex_uint8_t}),
-        cv.Optional(CONF_DISTANCE_FILTERED): sensor.sensor_schema(
+        cv.Optional(CONF_DISTANCE_FILTERED): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ).extend({cv.Required(CONF_ANCHOR_ID): cv.hex_uint8_t}),
-        cv.Optional(CONF_X_RAW): sensor.sensor_schema(
+        cv.Optional(CONF_X_RAW): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ),
-        cv.Optional(CONF_Y_RAW): sensor.sensor_schema(
+        cv.Optional(CONF_Y_RAW): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ),
-        cv.Optional(CONF_X_FILTERED): sensor.sensor_schema(
+        cv.Optional(CONF_X_FILTERED): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ),
-        cv.Optional(CONF_Y_FILTERED): sensor.sensor_schema(
+        cv.Optional(CONF_Y_FILTERED): sensor_comp.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ),
-        cv.Optional(CONF_FP_POWER): sensor.sensor_schema(
+        cv.Optional(CONF_FP_POWER): sensor_comp.sensor_schema(
             unit_of_measurement="dBm", accuracy_decimals=1, state_class="measurement"
         ),
-        cv.Optional(CONF_RX_POWER): sensor.sensor_schema(
+        cv.Optional(CONF_RX_POWER): sensor_comp.sensor_schema(
             unit_of_measurement="dBm", accuracy_decimals=1, state_class="measurement"
         ),
-        cv.Optional(CONF_CIR_RATIO): sensor.sensor_schema(
+        cv.Optional(CONF_CIR_RATIO): sensor_comp.sensor_schema(
             unit_of_measurement="dB", accuracy_decimals=1, state_class="measurement"
         ),
-        cv.Optional(CONF_NLOS_POWER): sensor.sensor_schema(
+        cv.Optional(CONF_NLOS_POWER): sensor_comp.sensor_schema(
             unit_of_measurement="dBm", accuracy_decimals=1, state_class="measurement"
         ),
-        cv.Optional(CONF_STATUS): sensor.sensor_schema(
+        cv.Optional(CONF_STATUS): sensor_comp.sensor_schema(
             accuracy_decimals=0, state_class="measurement"
         ),
     }
@@ -131,7 +132,7 @@ async def sensor_to_code(config):
         (CONF_DISTANCE_FILTERED, parent.set_distance_filtered_sensor),
     ]:
         if key in config:
-            sens = await sensor.new_sensor(config[key])
+            sens = await sensor_comp.new_sensor(config[key])
             cg.add(setter(sens, config[key][CONF_ANCHOR_ID]))
 
     scalar_mappings = [
@@ -148,5 +149,5 @@ async def sensor_to_code(config):
 
     for key, setter in scalar_mappings:
         if key in config:
-            sens = await sensor.new_sensor(config[key])
+            sens = await sensor_comp.new_sensor(config[key])
             cg.add(setter(sens))

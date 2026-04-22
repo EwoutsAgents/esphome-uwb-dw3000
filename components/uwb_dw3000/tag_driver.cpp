@@ -3,8 +3,8 @@
 #include <cmath>
 #include <cstring>
 
-#include "dw3000/dw3000.h"
-#include "dw3000/dw3000_regs.h"
+#include "dw3000.h"
+#include "dw3000_regs.h"
 
 namespace esphome {
 namespace uwb_dw3000 {

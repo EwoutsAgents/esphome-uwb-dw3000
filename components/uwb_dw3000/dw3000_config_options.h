@@ -240,5 +240,7 @@
 #define CONFIG_OPTION_33
 
 extern char dist_str[16];
+extern dwt_txconfig_t txconfig_options;
+extern dwt_txconfig_t txconfig_options_ch9;
 
 #endif /* EXAMPLES_CONFIG_OPTIONS_H_ */
