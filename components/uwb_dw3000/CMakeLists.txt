@@ -2,6 +2,7 @@ idf_component_register(
   SRCS
     "uwb_dw3000.cpp"
     "tag_driver.cpp"
+    "dw3000_backend.cpp"
     "dw3000/dw3000_config_options.cpp"
     "dw3000/dw3000_device_api.cpp"
     "dw3000/dw3000_mac_802_15_4.cpp"

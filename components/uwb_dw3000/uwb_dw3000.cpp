@@ -2,6 +2,7 @@
 #include "tag_driver.h"
 
 #include "esphome/core/log.h"
+#include "dw3000_backend.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,6 +11,26 @@ namespace esphome {
 namespace uwb_dw3000 {
 
 static const char *const TAG = "uwb_dw3000";
+
+namespace {
+UwbDw3000Component *g_active_component = nullptr;
+
+void dw3000_spi_begin_() {
+  if (g_active_component != nullptr)
+    g_active_component->enable();
+}
+
+uint8_t dw3000_spi_transfer_(uint8_t data) {
+  if (g_active_component != nullptr)
+    return g_active_component->transfer_byte(data);
+  return 0;
+}
+
+void dw3000_spi_end_() {
+  if (g_active_component != nullptr)
+    g_active_component->disable();
+}
+}  // namespace
 
 void UwbDw3000Component::add_anchor(uint8_t id, float x, float y, float z) {
   AnchorRuntime runtime;
@@ -46,13 +67,13 @@ void UwbDw3000Component::set_distance_filtered_sensor(sensor::Sensor *sens, uint
 }
 
 void UwbDw3000Component::setup() {
-  if (this->ss_pin_ == nullptr || this->irq_pin_ == nullptr || this->rst_pin_ == nullptr) {
+  if (this->irq_pin_ == nullptr || this->rst_pin_ == nullptr) {
     ESP_LOGE(TAG, "Pins are not configured");
     this->mark_failed();
     return;
   }
 
-  this->ss_pin_->setup();
+  this->spi_setup();
   this->irq_pin_->setup();
   this->rst_pin_->setup();
 
@@ -65,8 +86,16 @@ void UwbDw3000Component::setup() {
   }
   this->trilat_.set_anchors(anchors);
 
+  g_active_component = this;
+  dw3000_set_spi_backend(dw3000_spi_begin_, dw3000_spi_transfer_, dw3000_spi_end_);
+
+  uint8_t cs_pin = 4;
+  if (this->cs_ != nullptr) {
+    cs_pin = static_cast<uint8_t>(this->cs_->get_pin());
+  }
+
   uwb_tag_driver_set_pins(TagDriverPins{
-      static_cast<uint8_t>(this->ss_pin_->get_pin()),
+      cs_pin,
       static_cast<uint8_t>(this->irq_pin_->get_pin()),
       static_cast<uint8_t>(this->rst_pin_->get_pin()),
   });

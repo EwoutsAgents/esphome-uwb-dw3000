@@ -3,18 +3,21 @@
 #include "esphome/core/component.h"
 #include "esphome/core/hal.h"
 #include "esphome/components/sensor/sensor.h"
+#include "esphome/components/spi/spi.h"
 #include "trilateration_least_squares.h"
 #include "kalman_filter_1d.h"
 
-#include <map>
+#include <cmath>
 #include <vector>
 
 namespace esphome {
 namespace uwb_dw3000 {
 
-class UwbDw3000Component : public PollingComponent {
+class UwbDw3000Component
+    : public PollingComponent,
+      public spi::SPIDevice<spi::BIT_ORDER_MSB_FIRST, spi::CLOCK_POLARITY_LOW,
+                            spi::CLOCK_PHASE_LEADING, spi::DATA_RATE_8MHZ> {
  public:
-  void set_ss_pin(GPIOPin *pin) { this->ss_pin_ = pin; }
   void set_irq_pin(GPIOPin *pin) { this->irq_pin_ = pin; }
   void set_rst_pin(GPIOPin *pin) { this->rst_pin_ = pin; }
   void set_tag_id(uint8_t tag_id) { this->tag_id_ = tag_id; }
@@ -51,7 +54,6 @@ class UwbDw3000Component : public PollingComponent {
   void publish_measurements_();
   float truncate_(float value, int decimals) const;
 
-  GPIOPin *ss_pin_{nullptr};
   GPIOPin *irq_pin_{nullptr};
   GPIOPin *rst_pin_{nullptr};
   uint8_t tag_id_{0x45};

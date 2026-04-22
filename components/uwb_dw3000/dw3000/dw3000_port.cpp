@@ -6,20 +6,11 @@
  */ 
 
 #include "dw3000_port.h"
-#include "SPI.h"
+#include "dw3000_backend.h"
 
 uint8_t _ss;
 uint8_t _rst;
 uint8_t _irq;
-
-#ifdef ESP8266
-  // default ESP8266 frequency is 80 Mhz, thus divide by 4 is 20 MHz
-  const SPISettings _fastSPI = SPISettings(8000000L, MSBFIRST, SPI_MODE0);
-#else
-  SPISettings _fastSPI = SPISettings(8000000L, MSBFIRST, SPI_MODE0);
-#endif
-const SPISettings _slowSPI = SPISettings(2000000L, MSBFIRST, SPI_MODE0);
-const SPISettings* _currentSPI = &_fastSPI;
 
 boolean _debounceClockEnabled = false;
 
@@ -84,17 +75,12 @@ void spiBegin(uint8_t irq, uint8_t rst)
   SPCR0 = _BV(SPE)|_BV(MSTR); // Enable SPI functionality and Master SPI mode
   SPCR0 &= ~_BV(DORD); // set SPI most significant bit first (this is default on ATMEGA328pb)
   */
-    // generous initial init/wake-up-idle delay
+  // generous initial init/wake-up-idle delay
   delay(5);
-  // Configure the IRQ pin as INPUT. Required for correct interrupt setting for ESP8266
-      pinMode(irq, INPUT);
-  // start SPI
-  SPI.begin();
-#ifndef ESP8266
-//  SPI.usingInterrupt(digitalPinToInterrupt(irq)); // not every board support this, e.g. ESP8266
-#endif
+
   // pin and basic member setup
-  _rst        = rst;
+  (void) rst;
+  _rst        = 0xff;  // force soft reset path when no direct GPIO control is available
   _irq        = irq;
   //_deviceMode = IDLE_MODE;
   // attach interrupt
@@ -105,8 +91,6 @@ void spiBegin(uint8_t irq, uint8_t rst)
 
 void reselect(uint8_t ss) {
   _ss = ss;
-  pinMode(_ss, OUTPUT);
-  digitalWrite(_ss, HIGH);
 }
 
 void readBytes(byte cmd, uint16_t offset, byte data[], uint16_t n) {
@@ -128,17 +112,19 @@ void readBytes(byte cmd, uint16_t offset, byte data[], uint16_t n) {
       headerLen += 2;
     }
   }
-  SPI.beginTransaction(*_currentSPI);
-  digitalWrite(_ss, LOW);
+  if (!dw3000_spi_backend_is_ready()) {
+    memset(data, 0, n);
+    return;
+  }
+  dw3000_spi_backend_begin();
   for(i = 0; i < headerLen; i++) {
-    SPI.transfer(header[i]); // send header
+    dw3000_spi_backend_transfer(header[i]); // send header
   }
   for(i = 0; i < n; i++) {
-    data[i] = SPI.transfer(JUNK); // read values
+    data[i] = dw3000_spi_backend_transfer(JUNK); // read values
   }
   delayMicroseconds(5);
-  digitalWrite(_ss, HIGH);
-  SPI.endTransaction();
+  dw3000_spi_backend_end();
 }
 
 // always 4 bytes
@@ -200,17 +186,18 @@ void writeBytes(byte cmd, uint16_t offset, byte data[], uint16_t data_size) {
       headerLen += 2;
     }
   }
-  SPI.beginTransaction(*_currentSPI);
-  digitalWrite(_ss, LOW);
+  if (!dw3000_spi_backend_is_ready())
+    return;
+
+  dw3000_spi_backend_begin();
   for(i = 0; i < headerLen; i++) {
-    SPI.transfer(header[i]); // send header
+    dw3000_spi_backend_transfer(header[i]); // send header
   }
   for(i = 0; i < data_size; i++) {
-    SPI.transfer(data[i]); // write values
+    dw3000_spi_backend_transfer(data[i]); // write values
   }
   delayMicroseconds(5);
-  digitalWrite(_ss, HIGH);
-  SPI.endTransaction();
+  dw3000_spi_backend_end();
 }
 
 void enableClock(byte clock) {
@@ -218,15 +205,12 @@ void enableClock(byte clock) {
   memset(pmscctrl0, 0, LEN_PMSC_CTRL0);
   readBytes(PMSC, PMSC_CTRL0_SUB, pmscctrl0, LEN_PMSC_CTRL0);
   if(clock == AUTO_CLOCK) {
-    _currentSPI = &_fastSPI;
     pmscctrl0[0] = AUTO_CLOCK;
     pmscctrl0[1] &= 0xFE;
   } else if(clock == XTI_CLOCK) {
-    _currentSPI = &_slowSPI;
     pmscctrl0[0] &= 0xFC;
     pmscctrl0[0] |= XTI_CLOCK;
   } else if(clock == PLL_CLOCK) {
-    _currentSPI = &_fastSPI;
     pmscctrl0[0] &= 0xFC;
     pmscctrl0[0] |= PLL_CLOCK;
   } else {
@@ -236,18 +220,7 @@ void enableClock(byte clock) {
 }
 
 void reset() {
-  if(_rst == 0xff) {
-    softReset();
-  } else {
-    // dw1000 data sheet v2.08 §5.6.1 page 20, the RSTn pin should not be driven high but left floating.
-    pinMode(_rst, OUTPUT);
-    digitalWrite(_rst, LOW);
-    delay(2);  // dw1000 data sheet v2.08 §5.6.1 page 20: nominal 50ns, to be safe take more time
-    pinMode(_rst, INPUT);
-    delay(10); // dwm1000 data sheet v1.2 page 5: nominal 3 ms, to be safe take more time
-    // force into idle mode (although it should be already after reset)
-    idle();
-  }
+  softReset();
 }
 
 void softReset() {
@@ -414,10 +387,6 @@ void spiSelect(uint8_t ss) {
   enableClock(AUTO_CLOCK);
   delay(5);
   // reset chip (either soft or hard)
-  if(_rst != 0xff) {
-    // dw1000 data sheet v2.08 §5.6.1 page 20, the RSTn pin should not be driven high but left floating.
-    pinMode(_rst, INPUT);
-  }
   reset();
   // default network and node id
   writeValueToBytes(_networkAndAddress, 0xFF, LEN_PANADR);
@@ -450,18 +419,20 @@ void spiSelect(uint8_t ss) {
 
 int readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readLength, uint8_t *readBuffer)
 {
+  if (!dw3000_spi_backend_is_ready()) {
+    memset(readBuffer, 0, readLength);
+    return -1;
+  }
 
-  SPI.beginTransaction(*_currentSPI);
-  digitalWrite(_ss, LOW);
+  dw3000_spi_backend_begin();
   for(int i = 0; i < headerLength; i++) {
-    SPI.transfer(headerBuffer[i]); // send header
+    dw3000_spi_backend_transfer(headerBuffer[i]); // send header
   }
   for(int i = 0; i < readLength; i++) {
-    readBuffer[i] = SPI.transfer(JUNK); // read values
+    readBuffer[i] = dw3000_spi_backend_transfer(JUNK); // read values
   }
   delayMicroseconds(5);
-  digitalWrite(_ss, HIGH);
-  SPI.endTransaction();
+  dw3000_spi_backend_end();
 
 
 
@@ -484,17 +455,18 @@ int readfromspi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t readLengt
 
 int writetospi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t bodyLength, uint8_t *bodyBuffer)
 {
-  SPI.beginTransaction(*_currentSPI);
-  digitalWrite(_ss, LOW);
+  if (!dw3000_spi_backend_is_ready())
+    return -1;
+
+  dw3000_spi_backend_begin();
   for(int i = 0; i < headerLength; i++) {
-    SPI.transfer(headerBuffer[i]); // send header
+    dw3000_spi_backend_transfer(headerBuffer[i]); // send header
   }
   for(int i = 0; i < bodyLength; i++) {
-    SPI.transfer(bodyBuffer[i]); // write values
+    dw3000_spi_backend_transfer(bodyBuffer[i]); // write values
   }
   delayMicroseconds(5);
-  digitalWrite(_ss, HIGH);
-  SPI.endTransaction();
+  dw3000_spi_backend_end();
 
   
   /*open_spi(); // we first open the SPI line by setting it to low
@@ -514,9 +486,12 @@ int writetospi(uint16_t headerLength, uint8_t *headerBuffer, uint16_t bodyLength
 }
 
 void wakeup_device_with_io() {
-    digitalWrite(_ss, LOW);
+    if (!dw3000_spi_backend_is_ready())
+      return;
+
+    dw3000_spi_backend_begin();
     delay(2);
-    digitalWrite(_ss, HIGH);
+    dw3000_spi_backend_end();
     if (_debounceClockEnabled){
             enableDebounceClock();
     }
@@ -529,11 +504,11 @@ void port_set_dw_ic_spi_fastrate(uint8_t irq, uint8_t rst, uint8_t ss) {
 }
 
 uint32_t port_GetEXT_IRQStatus(void) {
-
+    return 0;
 }
 
 uint32_t port_CheckEXT_IRQ(void) {
-
+    return 0;
 }
 
 void port_DisableEXT_IRQ(void) {
@@ -567,9 +542,7 @@ void port_set_dwic_isr(port_dwic_isr_t dwic_isr)
 
     /* If needed, deactivate DW IC IRQ during the installation of the new handler. */
     //port_DisableEXT_IRQ();
-    portDISABLE_INTERRUPTS();
     port_dwic_isr = dwic_isr;
-    portENABLE_INTERRUPTS();
 /*
     if (!en)
     {

@@ -1,31 +1,19 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
 from esphome import pins
-from esphome.components import sensor
-from esphome.const import (
-    CONF_ID,
-    CONF_IRQ_PIN,
-    CONF_MODE,
-    CONF_MISO_PIN,
-    CONF_MOSI_PIN,
-    CONF_NAME,
-    CONF_NUMBER,
-    CONF_RST_PIN,
-    CONF_SPI_ID,
-    CONF_TRIGGER_ID,
-    CONF_UPDATE_INTERVAL,
-)
+from esphome.components import sensor, spi
+from esphome.const import CONF_ID, CONF_IRQ_PIN, CONF_RST_PIN, CONF_UPDATE_INTERVAL
 
 AUTO_LOAD = ["sensor"]
 DEPENDENCIES = ["spi"]
 MULTI_CONF = True
 
-CONF_SS_PIN = "ss_pin"
 CONF_TAG_ID = "tag_id"
 CONF_ROLE = "role"
 CONF_ANCHORS = "anchors"
 CONF_TAG_HEIGHT = "tag_height"
 CONF_ANCHOR_ID = "anchor_id"
+CONF_UWB_DW3000_ID = "uwb_dw3000_id"
 CONF_X = "x"
 CONF_Y = "y"
 CONF_Z = "z"
@@ -43,8 +31,9 @@ CONF_NLOS_POWER = "nlos_power"
 CONF_STATUS = "status"
 
 uwb_dw3000_ns = cg.esphome_ns.namespace("uwb_dw3000")
-UwbDw3000Component = uwb_dw3000_ns.class_("UwbDw3000Component", cg.PollingComponent)
-AnchorConfig = uwb_dw3000_ns.struct("AnchorConfig")
+UwbDw3000Component = uwb_dw3000_ns.class_(
+    "UwbDw3000Component", cg.PollingComponent, spi.SPIDevice
+)
 
 anchor_schema = cv.Schema(
     {
@@ -60,7 +49,6 @@ CONFIG_SCHEMA = (
         {
             cv.GenerateID(): cv.declare_id(UwbDw3000Component),
             cv.Required(CONF_ROLE): cv.one_of("tag", lower=True),
-            cv.Required(CONF_SS_PIN): pins.internal_gpio_output_pin_schema,
             cv.Required(CONF_IRQ_PIN): pins.internal_gpio_input_pin_schema,
             cv.Required(CONF_RST_PIN): pins.internal_gpio_output_pin_schema,
             cv.Optional(CONF_TAG_ID, default=0x45): cv.hex_uint8_t,
@@ -70,34 +58,34 @@ CONFIG_SCHEMA = (
         }
     )
     .extend(cv.polling_component_schema("200ms"))
-    .extend(cv.COMPONENT_SCHEMA)
+    .extend(spi.spi_device_schema(cs_pin_required=True, default_data_rate="8MHz", default_mode="MODE0"))
 )
+
+FINAL_VALIDATE_SCHEMA = spi.final_validate_device_schema(
+    "uwb_dw3000", require_mosi=True, require_miso=True
+)
+
 
 async def to_code(config):
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
+    await spi.register_spi_device(var, config)
 
-    ss_pin = await cg.gpio_pin_expression(config[CONF_SS_PIN])
     irq_pin = await cg.gpio_pin_expression(config[CONF_IRQ_PIN])
     rst_pin = await cg.gpio_pin_expression(config[CONF_RST_PIN])
 
-    cg.add(var.set_ss_pin(ss_pin))
     cg.add(var.set_irq_pin(irq_pin))
     cg.add(var.set_rst_pin(rst_pin))
     cg.add(var.set_tag_id(config[CONF_TAG_ID]))
     cg.add(var.set_tag_height(config[CONF_TAG_HEIGHT]))
 
     for anchor in config[CONF_ANCHORS]:
-        cg.add(
-            var.add_anchor(
-                anchor[CONF_ID], anchor[CONF_X], anchor[CONF_Y], anchor[CONF_Z]
-            )
-        )
+        cg.add(var.add_anchor(anchor[CONF_ID], anchor[CONF_X], anchor[CONF_Y], anchor[CONF_Z]))
 
 
 sensor_schema = cv.Schema(
     {
-        cv.GenerateID(CONF_ID): cv.use_id(UwbDw3000Component),
+        cv.GenerateID(CONF_UWB_DW3000_ID): cv.use_id(UwbDw3000Component),
         cv.Optional(CONF_DISTANCE): sensor.sensor_schema(
             unit_of_measurement="m", accuracy_decimals=3, state_class="measurement"
         ).extend({cv.Required(CONF_ANCHOR_ID): cv.hex_uint8_t}),
@@ -134,15 +122,9 @@ sensor_schema = cv.Schema(
     }
 )
 
-async def _register_anchor_sensor(config, key, setter):
-    if key not in config:
-        return []
-    sens = await sensor.new_sensor(config[key])
-    return [cg.add(setter(sens, config[key][CONF_ANCHOR_ID]))]
-
 
 async def sensor_to_code(config):
-    parent = await cg.get_variable(config[CONF_ID])
+    parent = await cg.get_variable(config[CONF_UWB_DW3000_ID])
 
     for key, setter in [
         (CONF_DISTANCE, parent.set_distance_sensor),

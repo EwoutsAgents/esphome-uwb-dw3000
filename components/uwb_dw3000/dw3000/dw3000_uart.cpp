@@ -9,17 +9,17 @@
 
 void UART_init(void)
 {
-  Serial.begin(115200);
+  // No-op under ESPHome component context.
 }
 
 void UART_putc(char data)
 {
-  Serial.print(data);
+  (void) data;
 }
 
 void UART_puts(char* s)
 {
-  Serial.print(s);
+  (void) s;
 }
 
 void test_run_info(unsigned char * s)

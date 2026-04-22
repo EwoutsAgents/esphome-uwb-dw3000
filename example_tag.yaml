@@ -25,7 +25,7 @@ spi:
 uwb_dw3000:
   id: my_uwb
   role: tag
-  ss_pin: GPIO4
+  cs_pin: GPIO4
   irq_pin: GPIO34
   rst_pin: GPIO27
   tag_id: 0x45
