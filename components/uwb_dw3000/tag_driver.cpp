@@ -5,9 +5,12 @@
 
 #include "dw3000.h"
 #include "dw3000_regs.h"
+#include "esphome/core/log.h"
 
 namespace esphome {
 namespace uwb_dw3000 {
+
+static const char *const TAG = "uwb_dw3000.tag_driver";
 
 namespace {
 
@@ -185,8 +188,10 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     dwt_configurestsloadiv();
   }
 
-  if (!send_tx_poll_msg_())
+  if (!send_tx_poll_msg_()) {
+    ESP_LOGW(TAG, "anchor=0x%02X outcome=tx_timeout", anchor_id);
     return NAN;
+  }
   set_delayed_rx_time(POLL_TX_TO_RESP_RX_DLY_UUS, &config_options);
   dwt_rxenable(DWT_START_RX_DLY_TS);
 
@@ -196,6 +201,7 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     if (millis() - wait_start > 1000) {
       dwt_write32bitreg(SYS_STATUS_ID,
                         SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
+      ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_wait_timeout", anchor_id);
       return NAN;
     }
     delay(1);
@@ -206,8 +212,9 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
   g_frame_seq_nb++;
 
   float distance = NAN;
+  const bool rx_good = (status_reg & SYS_STATUS_RXFCG_BIT_MASK) != 0;
 
-  if ((status_reg & SYS_STATUS_RXFCG_BIT_MASK) && (good_sts >= 0)) {
+  if (rx_good && (good_sts >= 0)) {
     const uint32_t frame_len = dwt_read32bitreg(RX_FINFO_ID) & RXFLEN_MASK;
     if (frame_len <= sizeof(rx_buffer)) {
       dwt_readrxdata(rx_buffer, frame_len, 0);
@@ -236,7 +243,28 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
                           DWT_TIME_UNITS;
         distance = tof * SPEED_OF_LIGHT;
       }
+      else {
+        ESP_LOGW(TAG, "anchor=0x%02X outcome=bad_frame_header", anchor_id);
+      }
+    } else {
+      ESP_LOGW(TAG, "anchor=0x%02X outcome=bad_frame_len len=%u", anchor_id,
+               static_cast<unsigned>(frame_len));
     }
+  } else if (!rx_good) {
+    if ((status_reg & SYS_STATUS_ALL_RX_TO) != 0) {
+      ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_timeout status=0x%08lX", anchor_id,
+               static_cast<unsigned long>(status_reg));
+    } else {
+      ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_error status=0x%08lX", anchor_id,
+               static_cast<unsigned long>(status_reg));
+    }
+  } else {
+    ESP_LOGW(TAG, "anchor=0x%02X outcome=bad_sts sts_qual=%d status=0x%08lX", anchor_id,
+             static_cast<int>(sts_qual), static_cast<unsigned long>(status_reg));
+  }
+
+  if (std::isfinite(distance)) {
+    ESP_LOGD(TAG, "anchor=0x%02X outcome=ok distance=%.3f", anchor_id, distance);
   }
 
   dwt_write32bitreg(SYS_STATUS_ID,
