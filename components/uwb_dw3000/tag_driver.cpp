@@ -21,8 +21,9 @@ constexpr uint8_t ALL_MSG_SN_IDX = 2;
 constexpr uint8_t RESP_MSG_POLL_RX_TS_IDX = 10;
 constexpr uint8_t RESP_MSG_RESP_TX_TS_IDX = 14;
 constexpr uint8_t RX_BUF_LEN = 24;
-constexpr uint16_t POLL_TX_TO_RESP_RX_DLY_UUS = (300 + CPU_COMP);
+constexpr uint16_t POLL_TX_TO_RESP_RX_DLY_UUS = (100 + CPU_COMP);
 constexpr uint16_t RESP_RX_TIMEOUT_UUS = 700;
+constexpr uint16_t UWB_PRE_TIMEOUT = 50;
 constexpr float A_IPATOV_64 = 121.7f;
 constexpr uint32_t INIT_IDLE_TIMEOUT_MS = 1500;
 constexpr uint32_t TX_COMPLETE_TIMEOUT_MS = 200;
@@ -46,6 +47,17 @@ uint32_t status_reg = 0;
 
 dwt_sts_cp_key_t cp_key = {0x14EB220F, 0xF86050A8, 0xD1D336AA, 0x14148674};
 dwt_sts_cp_iv_t cp_iv = {0x1F9A3DE4, 0xD37EC3CA, 0xC44FA8FB, 0x362EEB34};
+
+void clear_rx_tx_status_() {
+  dwt_write32bitreg(SYS_STATUS_ID,
+                    SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR |
+                        SYS_STATUS_TXFRS_BIT_MASK);
+}
+
+void reset_rx_tx_state_() {
+  dwt_forcetrxoff();
+  clear_rx_tx_status_();
+}
 
 float safe_log10f(float x) {
   if (x <= 0.0f)
@@ -111,19 +123,33 @@ void fill_cir_metrics_(const dwt_rxdiag_t &diag, TagDriverCirMetrics *metrics) {
 
 bool send_tx_poll_msg_() {
   tx_poll_msg[ALL_MSG_SN_IDX] = g_frame_seq_nb;
-  dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+  clear_rx_tx_status_();
   dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
   dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
-  dwt_starttx(DWT_START_TX_IMMEDIATE);
+  ESP_LOGD(TAG, "anchor=0x%02X tx_start seq=%u", tx_poll_msg[5], g_frame_seq_nb);
+
+  const int ret = dwt_starttx(DWT_START_TX_IMMEDIATE);
+  if (ret != DWT_SUCCESS) {
+    const uint32_t status = dwt_read32bitreg(SYS_STATUS_ID);
+    ESP_LOGW(TAG, "anchor=0x%02X outcome=tx_start_failed status=0x%08lX", tx_poll_msg[5],
+             static_cast<unsigned long>(status));
+    reset_rx_tx_state_();
+    return false;
+  }
 
   const uint32_t start = millis();
-  while (!(dwt_read32bitreg(SYS_STATUS_ID) & SYS_STATUS_TXFRS_BIT_MASK)) {
+  uint32_t status = 0;
+  while (!((status = dwt_read32bitreg(SYS_STATUS_ID)) & SYS_STATUS_TXFRS_BIT_MASK)) {
     if (millis() - start > TX_COMPLETE_TIMEOUT_MS) {
-      dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
+      ESP_LOGW(TAG, "anchor=0x%02X outcome=tx_timeout status=0x%08lX", tx_poll_msg[5],
+               static_cast<unsigned long>(status));
+      reset_rx_tx_state_();
       return false;
     }
     delay(1);
   }
+  ESP_LOGD(TAG, "anchor=0x%02X tx_done status=0x%08lX", tx_poll_msg[5],
+           static_cast<unsigned long>(status));
   dwt_write32bitreg(SYS_STATUS_ID, SYS_STATUS_TXFRS_BIT_MASK);
   return true;
 }
@@ -167,8 +193,15 @@ bool uwb_tag_driver_init() {
   dwt_setrxantennadelay(RX_ANT_DLY);
   dwt_settxantennadelay(TX_ANT_DLY);
   set_resp_rx_timeout(RESP_RX_TIMEOUT_UUS, &config_options);
+  dwt_setpreambledetecttimeout(UWB_PRE_TIMEOUT);
   dwt_setlnapamode(DWT_LNA_ENABLE | DWT_PA_ENABLE);
   dwt_configciadiag(DW_CIA_DIAG_LOG_ALL);
+  ESP_LOGCONFIG(TAG,
+                "DW3000 config: chan=%u preamble=%u pac=%u txCode=%u rxCode=%u sfdType=%u "
+                "dataRate=%u stsMode=%u stsLen=%u",
+                config_options.chan, config_options.txPreambLength, config_options.rxPAC,
+                config_options.txCode, config_options.rxCode, config_options.sfdType,
+                config_options.dataRate, config_options.stsMode, config_options.stsLength);
   return true;
 }
 
@@ -189,9 +222,11 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
   }
 
   if (!send_tx_poll_msg_()) {
-    ESP_LOGW(TAG, "anchor=0x%02X outcome=tx_timeout", anchor_id);
     return NAN;
   }
+
+  ESP_LOGD(TAG, "anchor=0x%02X rx_enable delay_uus=%u timeout_uus=%u", anchor_id,
+           POLL_TX_TO_RESP_RX_DLY_UUS, RESP_RX_TIMEOUT_UUS);
   set_delayed_rx_time(POLL_TX_TO_RESP_RX_DLY_UUS, &config_options);
   dwt_rxenable(DWT_START_RX_DLY_TS);
 
@@ -199,8 +234,7 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
   while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) &
            (SYS_STATUS_RXFCG_BIT_MASK | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR))) {
     if (millis() - wait_start > 1000) {
-      dwt_write32bitreg(SYS_STATUS_ID,
-                        SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
+      reset_rx_tx_state_();
       ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_wait_timeout", anchor_id);
       return NAN;
     }
@@ -267,8 +301,7 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     ESP_LOGD(TAG, "anchor=0x%02X outcome=ok distance=%.3f", anchor_id, distance);
   }
 
-  dwt_write32bitreg(SYS_STATUS_ID,
-                    SYS_STATUS_ALL_RX_GOOD | SYS_STATUS_ALL_RX_TO | SYS_STATUS_ALL_RX_ERR);
+  clear_rx_tx_status_();
 
   return distance;
 }

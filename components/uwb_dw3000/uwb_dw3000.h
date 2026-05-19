@@ -61,8 +61,8 @@ class UwbDw3000Component
   std::vector<AnchorRuntime> anchors_;
   TrilaterationLS trilat_;
 
-  Point raw_position_{0.0f, 0.0f};
-  Point filtered_position_{0.0f, 0.0f};
+  Point raw_position_{NAN, NAN};
+  Point filtered_position_{NAN, NAN};
   float fp_power_{NAN};
   float rx_power_{NAN};
   float cir_ratio_{NAN};

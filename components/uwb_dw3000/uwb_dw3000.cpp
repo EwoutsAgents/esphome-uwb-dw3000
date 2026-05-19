@@ -14,6 +14,12 @@ static const char *const TAG = "uwb_dw3000";
 
 namespace {
 UwbDw3000Component *g_active_component = nullptr;
+constexpr uint8_t MAX_RANGE_ATTEMPTS_PER_ANCHOR = 5;
+constexpr uint32_t RANGE_RETRY_DELAY_MS = 5;
+
+TagDriverCirMetrics invalid_metrics_() {
+  return TagDriverCirMetrics{NAN, NAN, NAN, NAN, 0xFF, 0xFF};
+}
 
 int gpio_pin_number_(GPIOPin *pin) {
   if (pin == nullptr || !pin->is_internal())
@@ -134,22 +140,38 @@ void UwbDw3000Component::update() {
   distances_filtered.reserve(this->anchors_.size());
 
   for (auto &anchor : this->anchors_) {
-    TagDriverCirMetrics metrics{};
-    float distance = uwb_tag_driver_range(anchor.anchor.id, &metrics);
+    TagDriverCirMetrics metrics = invalid_metrics_();
+    float distance = NAN;
+
+    for (uint8_t attempt = 0; attempt < MAX_RANGE_ATTEMPTS_PER_ANCHOR; attempt++) {
+      metrics = invalid_metrics_();
+      distance = uwb_tag_driver_range(anchor.anchor.id, &metrics);
+      if (std::isfinite(distance)) {
+        break;
+      }
+      if (attempt + 1 < MAX_RANGE_ATTEMPTS_PER_ANCHOR) {
+        delay(RANGE_RETRY_DELAY_MS);
+      }
+    }
+
     anchor.distance_raw = distance;
 
     if (!std::isnan(distance) && std::isfinite(distance)) {
       anchor.distance_filtered = anchor.filter.update(distance);
+    } else {
+      anchor.distance_filtered = NAN;
     }
 
     distances_raw.push_back(anchor.distance_raw);
     distances_filtered.push_back(anchor.distance_filtered);
 
-    this->fp_power_ = metrics.fp_power_db;
-    this->rx_power_ = metrics.rx_power_db;
-    this->cir_ratio_ = metrics.cir_ratio_db;
-    this->nlos_power_ = metrics.nlos_power_db;
-    this->cir_status_ = metrics.status;
+    if (metrics.status != 0xFF) {
+      this->fp_power_ = metrics.fp_power_db;
+      this->rx_power_ = metrics.rx_power_db;
+      this->cir_ratio_ = metrics.cir_ratio_db;
+      this->nlos_power_ = metrics.nlos_power_db;
+      this->cir_status_ = metrics.status;
+    }
   }
 
   bool raw_ok = std::all_of(distances_raw.begin(), distances_raw.end(),
@@ -159,8 +181,13 @@ void UwbDw3000Component::update() {
 
   if (raw_ok)
     this->raw_position_ = this->trilat_.compute(distances_raw);
+  else
+    this->raw_position_ = Point{NAN, NAN};
+
   if (filtered_ok)
     this->filtered_position_ = this->trilat_.compute(distances_filtered);
+  else
+    this->filtered_position_ = Point{NAN, NAN};
 
   this->publish_measurements_();
 }

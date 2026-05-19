@@ -27,7 +27,7 @@ class TrilaterationLS {
   void set_anchors(const std::vector<AnchorPosition> &anchors) { this->anchors_ = anchors; }
 
   Point compute(const std::vector<float> &distances) const {
-    Point result{0.0f, 0.0f};
+    Point result{NAN, NAN};
     if (this->anchors_.size() < 3 || distances.size() != this->anchors_.size()) {
       return result;
     }
