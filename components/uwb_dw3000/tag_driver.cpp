@@ -121,14 +121,14 @@ void fill_cir_metrics_(const dwt_rxdiag_t &diag, TagDriverCirMetrics *metrics) {
   metrics->nlos_power_db = 10.0f * safe_log10f(nlos_lin);
 }
 
-bool send_tx_poll_msg_() {
+bool send_tx_poll_msg_(uint32_t tx_mode) {
   tx_poll_msg[ALL_MSG_SN_IDX] = g_frame_seq_nb;
   clear_rx_tx_status_();
   dwt_writetxdata(sizeof(tx_poll_msg), tx_poll_msg, 0);
   dwt_writetxfctrl(sizeof(tx_poll_msg), 0, 1);
   ESP_LOGD(TAG, "anchor=0x%02X tx_start seq=%u", tx_poll_msg[5], g_frame_seq_nb);
 
-  const int ret = dwt_starttx(DWT_START_TX_IMMEDIATE);
+  const int ret = dwt_starttx(tx_mode);
   if (ret != DWT_SUCCESS) {
     const uint32_t status = dwt_read32bitreg(SYS_STATUS_ID);
     ESP_LOGW(TAG, "anchor=0x%02X outcome=tx_start_failed status=0x%08lX", tx_poll_msg[5],
@@ -221,14 +221,14 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     dwt_configurestsloadiv();
   }
 
-  if (!send_tx_poll_msg_()) {
-    return NAN;
-  }
-
   ESP_LOGD(TAG, "anchor=0x%02X rx_enable delay_uus=%u timeout_uus=%u", anchor_id,
            POLL_TX_TO_RESP_RX_DLY_UUS, RESP_RX_TIMEOUT_UUS);
-  set_delayed_rx_time(POLL_TX_TO_RESP_RX_DLY_UUS, &config_options);
-  dwt_rxenable(DWT_START_RX_DLY_TS);
+  dwt_setrxaftertxdelay(POLL_TX_TO_RESP_RX_DLY_UUS);
+  dwt_setrxtimeout(RESP_RX_TIMEOUT_UUS);
+
+  if (!send_tx_poll_msg_(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED)) {
+    return NAN;
+  }
 
   uint32_t wait_start = millis();
   while (!((status_reg = dwt_read32bitreg(SYS_STATUS_ID)) &
@@ -286,8 +286,19 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     }
   } else if (!rx_good) {
     if ((status_reg & SYS_STATUS_ALL_RX_TO) != 0) {
-      ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_timeout status=0x%08lX", anchor_id,
-               static_cast<unsigned long>(status_reg));
+      if ((status_reg & SYS_STATUS_RXPTO_BIT_MASK) != 0) {
+        ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_preamble_timeout status=0x%08lX", anchor_id,
+                 static_cast<unsigned long>(status_reg));
+      } else if ((status_reg & SYS_STATUS_RXFTO_BIT_MASK) != 0) {
+        ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_frame_timeout status=0x%08lX", anchor_id,
+                 static_cast<unsigned long>(status_reg));
+      } else if ((status_reg & SYS_STATUS_RXSTO_BIT_MASK) != 0) {
+        ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_sfd_timeout status=0x%08lX", anchor_id,
+                 static_cast<unsigned long>(status_reg));
+      } else {
+        ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_timeout_other status=0x%08lX", anchor_id,
+                 static_cast<unsigned long>(status_reg));
+      }
     } else {
       ESP_LOGW(TAG, "anchor=0x%02X outcome=rx_error status=0x%08lX", anchor_id,
                static_cast<unsigned long>(status_reg));
@@ -301,7 +312,11 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
     ESP_LOGD(TAG, "anchor=0x%02X outcome=ok distance=%.3f", anchor_id, distance);
   }
 
-  clear_rx_tx_status_();
+  if (std::isfinite(distance)) {
+    clear_rx_tx_status_();
+  } else {
+    reset_rx_tx_state_();
+  }
 
   return distance;
 }

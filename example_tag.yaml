@@ -1,8 +1,10 @@
 external_components:
   - source:
-      type: local
-      path: ./components
+      type: git
+      url: https://github.com/EwoutsAgents/esphome-uwb-dw3000
+      ref: main
     components: [uwb_dw3000]
+    refresh: 0s
 
 esphome:
   name: uwb-tag
@@ -11,7 +13,7 @@ esphome:
       - -std=gnu++17
 
 esp32:
-  board: esp32dev
+  board: esp-wrover-kit
   framework:
     type: esp-idf
 
@@ -35,11 +37,11 @@ uwb_dw3000:
       x: 0.06
       y: 4.61
       z: 1.83
-    - id: 0x02
+    - id: 0x05
       x: 2.09
       y: 4.37
       z: 1.74
-    - id: 0x03
+    - id: 0x04
       x: 2.20
       y: 0.06
       z: 1.83
@@ -57,6 +59,30 @@ sensor:
     distance_filtered:
       name: "UWB Distance A1 Filtered"
       anchor_id: 0x01
+
+  - platform: uwb_dw3000
+    uwb_dw3000_id: my_uwb
+    distance:
+      name: "UWB Distance A5"
+      anchor_id: 0x05
+
+  - platform: uwb_dw3000
+    uwb_dw3000_id: my_uwb
+    distance_filtered:
+      name: "UWB Distance A5 Filtered"
+      anchor_id: 0x05
+
+  - platform: uwb_dw3000
+    uwb_dw3000_id: my_uwb
+    distance:
+      name: "UWB Distance A4"
+      anchor_id: 0x04
+
+  - platform: uwb_dw3000
+    uwb_dw3000_id: my_uwb
+    distance_filtered:
+      name: "UWB Distance A4 Filtered"
+      anchor_id: 0x04
 
   - platform: uwb_dw3000
     uwb_dw3000_id: my_uwb
