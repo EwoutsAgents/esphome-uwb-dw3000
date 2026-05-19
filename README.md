@@ -52,6 +52,37 @@ This means the tag sends poll frames, but no valid response frame is received in
 ## Example usage
 
 ```yaml
+esphome:
+  name: uwb-tag-try
+  friendly_name: UWB_tag_try
+  platformio_options:
+    build_flags:
+      - -std=gnu++17
+
+esp32:
+  board: esp-wrover-kit
+  framework:
+    type: esp-idf
+
+# Enable logging
+logger:
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+
+  # Enable fallback hotspot (captive portal) in case wifi connection fails
+  ap:
+    ssid: "Uwb-Tag-Try Fallback Hotspot"
+    password: "cLvs9zlPJlsI"
+
+captive_portal:
+
+
+button:
+  - platform: restart
+    name: "UWB Tag Restart"
+    
 external_components:
   - source:
       type: git
@@ -59,19 +90,6 @@ external_components:
       ref: main
     components: [uwb_dw3000]
     refresh: 0s
-
-esphome:
-  name: uwb-tag
-  platformio_options:
-    build_flags:
-      - -std=gnu++17
-
-esp32:
-  board: esp32dev
-  framework:
-    type: esp-idf
-
-logger:
 
 spi:
   clk_pin: GPIO18
@@ -81,6 +99,7 @@ spi:
 uwb_dw3000:
   id: my_uwb
   role: tag
+  data_rate: 2MHz
   cs_pin: GPIO4
   irq_pin: GPIO34
   rst_pin: GPIO27
@@ -98,6 +117,14 @@ uwb_dw3000:
     - id: 0x03
       x: 2.20
       y: 0.06
+      z: 1.83
+    - id: 0x04
+      x: 2.00
+      y: 0.06
+      z: 1.00
+    - id: 0x05
+      x: 2.12
+      y: 0.02
       z: 1.83
   tag_height: 0.78
 
@@ -143,10 +170,6 @@ sensor:
     uwb_dw3000_id: my_uwb
     rx_power:
       name: "UWB RX Power"
-
-button:
-  - platform: restart
-    name: "UWB Tag Restart"
 ```
 
 ## Practical debug notes
