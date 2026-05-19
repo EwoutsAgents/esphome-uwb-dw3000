@@ -123,6 +123,7 @@ void UwbDw3000Component::setup() {
       static_cast<uint8_t>(rst_pin_no),
   });
   uwb_tag_driver_set_tag_id(this->tag_id_);
+  uwb_tag_driver_set_rx_after_tx_delay_uus(this->rx_after_tx_delay_uus_);
   if (!uwb_tag_driver_init()) {
     ESP_LOGE(TAG, "DW3000 init failed (check SPI pins, power, and wiring)");
     this->mark_failed();
@@ -233,6 +234,7 @@ void UwbDw3000Component::dump_config() {
   ESP_LOGCONFIG(TAG, "UWB DW3000:");
   ESP_LOGCONFIG(TAG, "  Tag ID: 0x%02X", this->tag_id_);
   ESP_LOGCONFIG(TAG, "  Anchors: %u", static_cast<unsigned>(this->anchors_.size()));
+  ESP_LOGCONFIG(TAG, "  RX-after-TX delay: %u uus", this->rx_after_tx_delay_uus_);
 }
 
 }  // namespace uwb_dw3000

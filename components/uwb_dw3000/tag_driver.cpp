@@ -21,7 +21,7 @@ constexpr uint8_t ALL_MSG_SN_IDX = 2;
 constexpr uint8_t RESP_MSG_POLL_RX_TS_IDX = 10;
 constexpr uint8_t RESP_MSG_RESP_TX_TS_IDX = 14;
 constexpr uint8_t RX_BUF_LEN = 24;
-constexpr uint16_t POLL_TX_TO_RESP_RX_DLY_UUS = (100 + CPU_COMP);
+constexpr uint16_t POLL_TX_TO_RESP_RX_DLY_UUS_DEFAULT = (100 + CPU_COMP);
 constexpr uint16_t RESP_RX_TIMEOUT_UUS = 700;
 constexpr uint16_t UWB_PRE_TIMEOUT = 50;
 constexpr float A_IPATOV_64 = 121.7f;
@@ -38,6 +38,7 @@ TagDriverPins g_pins{4, 34, 27};
 uint8_t g_tag_id = 0x45;
 uint8_t g_frame_seq_nb = 0;
 bool g_first_loop = false;
+uint16_t g_poll_tx_to_resp_rx_dly_uus = POLL_TX_TO_RESP_RX_DLY_UUS_DEFAULT;
 
 uint8_t tx_poll_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'W', 0x00, 'V', 0x00, 0xE0, 0, 0};
 uint8_t rx_resp_msg[] = {0x41, 0x88, 0, 0xCA, 0xDE, 'V', 0x00, 'W', 0x00, 0xE1,
@@ -160,6 +161,10 @@ void uwb_tag_driver_set_pins(const TagDriverPins &pins) { g_pins = pins; }
 
 void uwb_tag_driver_set_tag_id(uint8_t tag_id) { g_tag_id = tag_id; }
 
+void uwb_tag_driver_set_rx_after_tx_delay_uus(uint16_t delay_uus) {
+  g_poll_tx_to_resp_rx_dly_uus = delay_uus;
+}
+
 bool uwb_tag_driver_init() {
   UART_init();
   spiBegin(g_pins.irq_pin, g_pins.rst_pin);
@@ -222,8 +227,8 @@ float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics) {
   }
 
   ESP_LOGD(TAG, "anchor=0x%02X rx_enable delay_uus=%u timeout_uus=%u", anchor_id,
-           POLL_TX_TO_RESP_RX_DLY_UUS, RESP_RX_TIMEOUT_UUS);
-  dwt_setrxaftertxdelay(POLL_TX_TO_RESP_RX_DLY_UUS);
+           g_poll_tx_to_resp_rx_dly_uus, RESP_RX_TIMEOUT_UUS);
+  dwt_setrxaftertxdelay(g_poll_tx_to_resp_rx_dly_uus);
   dwt_setrxtimeout(RESP_RX_TIMEOUT_UUS);
 
   if (!send_tx_poll_msg_(DWT_START_TX_IMMEDIATE | DWT_RESPONSE_EXPECTED)) {

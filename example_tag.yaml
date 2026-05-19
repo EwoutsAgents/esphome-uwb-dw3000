@@ -31,6 +31,7 @@ uwb_dw3000:
   irq_pin: GPIO34
   rst_pin: GPIO27
   tag_id: 0x45
+  rx_after_tx_delay_uus: 500
   update_interval: 200ms
   anchors:
     - id: 0x01

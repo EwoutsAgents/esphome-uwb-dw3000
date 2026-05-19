@@ -18,6 +18,7 @@ CONF_UWB_DW3000_ID = "uwb_dw3000_id"
 CONF_X = "x"
 CONF_Y = "y"
 CONF_Z = "z"
+CONF_RX_AFTER_TX_DELAY_UUS = "rx_after_tx_delay_uus"
 
 CONF_DISTANCE = "distance"
 CONF_DISTANCE_FILTERED = "distance_filtered"
@@ -55,6 +56,7 @@ CONFIG_SCHEMA = (
             cv.Optional(CONF_TAG_ID, default=0x45): cv.hex_uint8_t,
             cv.Required(CONF_ANCHORS): cv.All(cv.ensure_list(anchor_schema), cv.Length(min=3)),
             cv.Optional(CONF_TAG_HEIGHT, default=0.78): cv.float_,
+            cv.Optional(CONF_RX_AFTER_TX_DELAY_UUS, default=500): cv.int_range(min=1, max=65535),
             cv.Optional(CONF_UPDATE_INTERVAL, default="200ms"): cv.update_interval,
         }
     )
@@ -79,6 +81,7 @@ async def to_code(config):
     cg.add(var.set_rst_pin(rst_pin))
     cg.add(var.set_tag_id(config[CONF_TAG_ID]))
     cg.add(var.set_tag_height(config[CONF_TAG_HEIGHT]))
+    cg.add(var.set_rx_after_tx_delay_uus(config[CONF_RX_AFTER_TX_DELAY_UUS]))
 
     for anchor in config[CONF_ANCHORS]:
         cg.add(var.add_anchor(anchor[CONF_ID], anchor[CONF_X], anchor[CONF_Y], anchor[CONF_Z]))

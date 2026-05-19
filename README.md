@@ -72,6 +72,7 @@ uwb_dw3000:
   irq_pin: GPIO34
   rst_pin: GPIO27
   tag_id: 0x45
+  rx_after_tx_delay_uus: 500
   update_interval: 200ms
   anchors:
     - id: 0x01
@@ -143,6 +144,8 @@ button:
 ```
 
 The example anchor IDs match the known-working reference firmware. If your anchors use different IDs, update both the `anchors:` list and the matching distance sensor `anchor_id` values.
+
+For timing sweeps, adjust `rx_after_tx_delay_uus` in YAML. Good next test values are `240`, `300`, `400`, `500`, and `700`.
 
 ## Practical debug notes
 

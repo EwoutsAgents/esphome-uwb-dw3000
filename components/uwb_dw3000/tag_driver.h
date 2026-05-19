@@ -22,6 +22,7 @@ struct TagDriverCirMetrics {
 
 void uwb_tag_driver_set_pins(const TagDriverPins &pins);
 void uwb_tag_driver_set_tag_id(uint8_t tag_id);
+void uwb_tag_driver_set_rx_after_tx_delay_uus(uint16_t delay_uus);
 bool uwb_tag_driver_init();
 float uwb_tag_driver_range(uint8_t anchor_id, TagDriverCirMetrics *metrics);
 

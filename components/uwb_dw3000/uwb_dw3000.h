@@ -22,6 +22,7 @@ class UwbDw3000Component
   void set_rst_pin(GPIOPin *pin) { this->rst_pin_ = pin; }
   void set_tag_id(uint8_t tag_id) { this->tag_id_ = tag_id; }
   void set_tag_height(float tag_height) { this->tag_height_ = tag_height; }
+  void set_rx_after_tx_delay_uus(uint16_t delay_uus) { this->rx_after_tx_delay_uus_ = delay_uus; }
   void add_anchor(uint8_t id, float x, float y, float z);
 
   void set_distance_sensor(sensor::Sensor *sens, uint8_t anchor_id);
@@ -58,6 +59,7 @@ class UwbDw3000Component
   GPIOPin *rst_pin_{nullptr};
   uint8_t tag_id_{0x45};
   float tag_height_{0.78f};
+  uint16_t rx_after_tx_delay_uus_{500};
   std::vector<AnchorRuntime> anchors_;
   TrilaterationLS trilat_;
 
